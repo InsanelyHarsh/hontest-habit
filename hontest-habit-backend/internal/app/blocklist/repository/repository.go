@@ -13,30 +13,28 @@ import (
 	"github.com/insanelyharsh/hontest-habit/internal/types"
 )
 
-// BlocklistRepository persists a user's blocked-site entries. userID is a
-// plain string throughout — it's the real users.id UUID (cast to text) read
-// off the validated JWT claims, not types.UserId (which no feature actually
-// uses; see root CLAUDE.md's types/constants convention).
+// BlocklistRepository persists a user's blocked-site entries. userID is
+// types.UserId throughout — the real users.id (BIGSERIAL).
 type BlocklistRepository interface {
 	// EntryExists reports whether userID already has an active entry for
 	// url. Used as a fast pre-check by the manager; CreateEntry's
 	// ON CONFLICT DO NOTHING is the race-condition backstop.
-	EntryExists(ctx context.Context, userID, url string) (bool, error)
+	EntryExists(ctx context.Context, userID types.UserId, url string) (bool, error)
 
 	// CreateEntry inserts a new entry and returns the full stored row.
 	// Returns errors.Conflict if the insert conflicts with the partial
 	// unique index on (user_id, url) WHERE is_active.
-	CreateEntry(ctx context.Context, userID string, req models.CreateEntryRequest) (*models.BlocklistEntry, error)
+	CreateEntry(ctx context.Context, userID types.UserId, req models.CreateEntryRequest) (*models.BlocklistEntry, error)
 
 	// GetEntries returns userID's active entries, newest first.
-	GetEntries(ctx context.Context, userID string) ([]*models.BlocklistEntry, error)
+	GetEntries(ctx context.Context, userID types.UserId) ([]*models.BlocklistEntry, error)
 
 	// RemoveEntry soft-deletes (is_active = false) the entry identified by
 	// id, scoped to userID. Returns errors.NotFound if no active row
 	// matched both id and userID — this covers a wrong id, an id
 	// belonging to a different user, and an already-removed entry
 	// indistinguishably, so ownership isn't leaked to the caller.
-	RemoveEntry(ctx context.Context, userID string, id types.BlocklistId) error
+	RemoveEntry(ctx context.Context, userID types.UserId, id types.BlocklistId) error
 }
 
 type BlocklistRepositoryImpl struct {
@@ -47,11 +45,11 @@ func NewBlocklistRepository(conn db.IDB) BlocklistRepository {
 	return BlocklistRepositoryImpl{db: conn}
 }
 
-func (r BlocklistRepositoryImpl) EntryExists(ctx context.Context, userID, url string) (bool, error) {
+func (r BlocklistRepositoryImpl) EntryExists(ctx context.Context, userID types.UserId, url string) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM blocklist_entries WHERE user_id = $1 AND url = $2 AND is_active)`,
-		userID, url,
+		int64(userID), url,
 	).Scan(&exists)
 	if err != nil {
 		return false, errors.Internal("failed to check entry existence", err)
@@ -59,7 +57,7 @@ func (r BlocklistRepositoryImpl) EntryExists(ctx context.Context, userID, url st
 	return exists, nil
 }
 
-func (r BlocklistRepositoryImpl) CreateEntry(ctx context.Context, userID string, req models.CreateEntryRequest) (*models.BlocklistEntry, error) {
+func (r BlocklistRepositoryImpl) CreateEntry(ctx context.Context, userID types.UserId, req models.CreateEntryRequest) (*models.BlocklistEntry, error) {
 	var entry models.BlocklistEntry
 	var frequency string
 	var metaBytes []byte
@@ -68,7 +66,7 @@ func (r BlocklistRepositoryImpl) CreateEntry(ctx context.Context, userID string,
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (user_id, url) WHERE is_active DO NOTHING
 		RETURNING id, url, daily_start_time, daily_end_time, frequency, limit_count, meta, is_active, created_at, updated_at
-	`, userID, req.URL, req.DailyStartTime, req.DailyEndTime, string(req.Limit.Frequency), req.Limit.Limit,
+	`, int64(userID), req.URL, req.DailyStartTime, req.DailyEndTime, string(req.Limit.Frequency), req.Limit.Limit,
 	).Scan(
 		&entry.ID, &entry.URL, &entry.DailyStartTime, &entry.DailyEndTime,
 		&frequency, &entry.Limit.Limit, &metaBytes, &entry.IsActive,
@@ -88,13 +86,13 @@ func (r BlocklistRepositoryImpl) CreateEntry(ctx context.Context, userID string,
 	}
 }
 
-func (r BlocklistRepositoryImpl) GetEntries(ctx context.Context, userID string) ([]*models.BlocklistEntry, error) {
+func (r BlocklistRepositoryImpl) GetEntries(ctx context.Context, userID types.UserId) ([]*models.BlocklistEntry, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, url, daily_start_time, daily_end_time, frequency, limit_count, meta, is_active, created_at, updated_at
 		FROM blocklist_entries
 		WHERE user_id = $1 AND is_active
 		ORDER BY created_at DESC
-	`, userID)
+	`, int64(userID))
 	if err != nil {
 		return nil, errors.Internal("failed to fetch blocklist entries", err)
 	}
@@ -124,10 +122,10 @@ func (r BlocklistRepositoryImpl) GetEntries(ctx context.Context, userID string) 
 	return entries, nil
 }
 
-func (r BlocklistRepositoryImpl) RemoveEntry(ctx context.Context, userID string, id types.BlocklistId) error {
+func (r BlocklistRepositoryImpl) RemoveEntry(ctx context.Context, userID types.UserId, id types.BlocklistId) error {
 	tag, err := r.db.Exec(ctx,
 		`UPDATE blocklist_entries SET is_active = false, updated_at = now() WHERE id = $1 AND user_id = $2 AND is_active`,
-		int64(id), userID,
+		int64(id), int64(userID),
 	)
 	if err != nil {
 		return errors.Internal("failed to remove entry", err)

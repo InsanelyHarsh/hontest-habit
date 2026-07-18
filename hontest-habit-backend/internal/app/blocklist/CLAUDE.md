@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This covers `internal/app/blocklist/` (manager, validation) plus its `repository/` and `models/` subpackages. Creating, listing, and soft-removing a user's blocked-site entries is implemented end-to-end, including HTTP wiring: `internal/webserver/routes/blocklist_routes.go` registers `POST /blocklist/entries`, `GET /blocklist/entries`, and `DELETE /blocklist/entries/{id}`, and `cmd/main.go` constructs the `BlocklistRepository`/`BlocklistManager` and mounts the route group behind `middlewares.Authenticate` — the first protected route group in the repo. See the root CLAUDE.md's Webserver/Middlewares sections for the HTTP layer itself.
 
-## User identity: plain `string`, not `types.UserId`
+## User identity: `types.UserId`
 
-Every method here takes a `userID string` — the real `users.id` UUID, cast to text, read off the validated JWT claims (`claims.Subject`). `types.UserId` (`int64`) is declared in `internal/types/types.go` but deliberately unused here: it can't represent the actual UUID-shaped identity, and `auth`'s repository already bypasses it the same way (`CreateUser` etc. return a plain `string`). Don't introduce `types.UserId` into this package's signatures — it would silently misrepresent the value's real shape. `blocklist_entries.user_id` is `UUID NOT NULL` with no `REFERENCES users(id)` constraint (an explicit choice, not an oversight).
+Every method here takes a `userID types.UserId` — the real `users.id` (`BIGSERIAL`/`int64`). The JWT `sub` claim (`claims.Subject`) is always a string per spec, so `blocklist_routes.go` parses it to `types.UserId` with `strconv.ParseInt` once at the HTTP boundary, before it ever reaches the manager/repository. SQL calls bind `int64(userID)` explicitly (pgx's encode path doesn't automatically unwrap a defined `int64` type, same reason `types.Frequency` is explicitly converted to `string` when bound). `blocklist_entries.user_id` is `BIGINT NOT NULL` with no `REFERENCES users(id)` constraint (an explicit choice, not an oversight).
 
 ## Duplicate check, deliberately dual-layer
 
@@ -34,4 +34,4 @@ There's no `BlocklistManager.UpdateEntry` and no `PUT`/`PATCH` route. The origin
 
 ## Migration
 
-`internal/platform/db/migrations/000003_create_blocklist_entries_table.{up,down}.sql` adds `blocklist_entries` (`id BIGSERIAL`, `user_id UUID` unconstrained, `url TEXT`, optional daily time window, `frequency`/`limit_count`, `meta JSONB`, `is_active`, timestamps), plus the partial unique index backing the duplicate check and a plain index on `user_id` for `GetEntries`.
+`internal/platform/db/migrations/000002_create_blocklist_entries_table.{up,down}.sql` adds `blocklist_entries` (`id BIGSERIAL`, `user_id BIGINT` unconstrained, `url TEXT`, optional daily time window, `frequency`/`limit_count`, `meta JSONB`, `is_active`, timestamps), plus the partial unique index backing the duplicate check and a plain index on `user_id` for `GetEntries`.

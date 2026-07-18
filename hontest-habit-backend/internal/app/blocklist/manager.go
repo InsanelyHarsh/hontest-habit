@@ -10,9 +10,8 @@ import (
 )
 
 // BlocklistManager stores the sites a user has chosen to block. userID
-// throughout is a plain string — the real users.id UUID (cast to text)
-// read off the validated JWT claims, not types.UserId (declared but unused
-// by any feature; see root CLAUDE.md's types/constants convention).
+// throughout is types.UserId — the real users.id (BIGSERIAL) — parsed from
+// the JWT sub claim at the HTTP boundary; see blocklist_routes.go.
 type BlocklistManager struct {
 	repository repository.BlocklistRepository
 }
@@ -24,7 +23,7 @@ func NewBlocklistManager(repo repository.BlocklistRepository) *BlocklistManager 
 // CreateEntry validates req, rejects a duplicate active entry for the same
 // url (repository.CreateEntry has the DB-level backstop for the
 // TOCTOU race), and persists the new entry.
-func (m *BlocklistManager) CreateEntry(ctx context.Context, userID string, req *models.CreateEntryRequest) (*models.BlocklistEntry, error) {
+func (m *BlocklistManager) CreateEntry(ctx context.Context, userID types.UserId, req *models.CreateEntryRequest) (*models.BlocklistEntry, error) {
 	url, err := validateURL(req.URL)
 	if err != nil {
 		return nil, err
@@ -50,12 +49,12 @@ func (m *BlocklistManager) CreateEntry(ctx context.Context, userID string, req *
 
 // RemoveEntry soft-deletes id, scoped to userID so one user can never
 // remove another user's entry.
-func (m *BlocklistManager) RemoveEntry(ctx context.Context, userID string, id types.BlocklistId) error {
+func (m *BlocklistManager) RemoveEntry(ctx context.Context, userID types.UserId, id types.BlocklistId) error {
 	return m.repository.RemoveEntry(ctx, userID, id)
 }
 
 // GetEntries lists userID's active blocklist entries.
-func (m *BlocklistManager) GetEntries(ctx context.Context, userID string) ([]*models.BlocklistEntry, error) {
+func (m *BlocklistManager) GetEntries(ctx context.Context, userID types.UserId) ([]*models.BlocklistEntry, error) {
 	return m.repository.GetEntries(ctx, userID)
 }
 

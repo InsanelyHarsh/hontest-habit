@@ -1,6 +1,6 @@
 CREATE TABLE blocklist_entries (
     id               BIGSERIAL PRIMARY KEY,
-    user_id          UUID NOT NULL,
+    user_id          BIGINT NOT NULL,
     url              TEXT NOT NULL,
     daily_start_time TIMESTAMPTZ,
     daily_end_time   TIMESTAMPTZ,

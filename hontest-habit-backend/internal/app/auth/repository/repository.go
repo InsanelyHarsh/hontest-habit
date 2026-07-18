@@ -10,6 +10,7 @@ import (
 	"github.com/insanelyharsh/hontest-habit/internal/common/errors"
 	"github.com/insanelyharsh/hontest-habit/internal/constants"
 	"github.com/insanelyharsh/hontest-habit/internal/platform/db"
+	"github.com/insanelyharsh/hontest-habit/internal/types"
 )
 
 // dummyBcryptHash is a precomputed bcrypt hash of a fixed, never-matching
@@ -27,13 +28,13 @@ type AuthRepository interface {
 
 	// CreateUser hashes plaintextPassword and inserts a new user row.
 	// Returns an errors.Conflict if email is already registered.
-	CreateUser(ctx context.Context, email, plaintextPassword string) (userID string, err error)
+	CreateUser(ctx context.Context, email, plaintextPassword string) (userID types.UserId, err error)
 
 	// ValidateCredentials fetches the stored hash for email internally and
 	// compares it against plaintextPassword. Returns errors.Unauthorized
 	// (never a more specific reason) whether the email doesn't exist or
 	// the password is wrong.
-	ValidateCredentials(ctx context.Context, email, plaintextPassword string) (userID string, err error)
+	ValidateCredentials(ctx context.Context, email, plaintextPassword string) (userID types.UserId, err error)
 }
 
 type AuthRepositoryImpl struct {
@@ -56,44 +57,45 @@ func (r AuthRepositoryImpl) EmailExists(ctx context.Context, email string) (bool
 	return exists, nil
 }
 
-func (r AuthRepositoryImpl) CreateUser(ctx context.Context, email, plaintextPassword string) (string, error) {
+func (r AuthRepositoryImpl) CreateUser(ctx context.Context, email, plaintextPassword string) (types.UserId, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(plaintextPassword), constants.BcryptCost)
 	if err != nil {
-		return "", errors.Internal("failed to hash password", err)
+		return 0, errors.Internal("failed to hash password", err)
 	}
 
-	var id string
+	var id int64
 	err = r.db.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING RETURNING id::text`,
+		`INSERT INTO users (email, password_hash) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING RETURNING id`,
 		email, string(hash),
 	).Scan(&id)
 	switch {
 	case err == nil:
-		return id, nil
+		return types.UserId(id), nil
 	case goerrors.Is(err, pgx.ErrNoRows):
-		return "", errors.Conflict("email already registered", nil)
+		return 0, errors.Conflict("email already registered", nil)
 	default:
-		return "", errors.Internal("failed to create user", err)
+		return 0, errors.Internal("failed to create user", err)
 	}
 }
 
-func (r AuthRepositoryImpl) ValidateCredentials(ctx context.Context, email, plaintextPassword string) (string, error) {
-	var id, hash string
+func (r AuthRepositoryImpl) ValidateCredentials(ctx context.Context, email, plaintextPassword string) (types.UserId, error) {
+	var id int64
+	var hash string
 	err := r.db.QueryRow(ctx,
-		`SELECT id::text, password_hash FROM users WHERE email = $1`,
+		`SELECT id, password_hash FROM users WHERE email = $1`,
 		email,
 	).Scan(&id, &hash)
 
 	switch {
 	case err == nil:
 		if compareErr := bcrypt.CompareHashAndPassword([]byte(hash), []byte(plaintextPassword)); compareErr != nil {
-			return "", errors.Unauthorized("invalid email or password", compareErr)
+			return 0, errors.Unauthorized("invalid email or password", compareErr)
 		}
-		return id, nil
+		return types.UserId(id), nil
 	case goerrors.Is(err, pgx.ErrNoRows):
 		_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(plaintextPassword))
-		return "", errors.Unauthorized("invalid email or password", nil)
+		return 0, errors.Unauthorized("invalid email or password", nil)
 	default:
-		return "", errors.Internal("failed to fetch user", err)
+		return 0, errors.Internal("failed to fetch user", err)
 	}
 }

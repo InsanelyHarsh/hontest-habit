@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/insanelyharsh/hontest-habit/internal/common/errors"
 	"github.com/insanelyharsh/hontest-habit/internal/constants"
+	"github.com/insanelyharsh/hontest-habit/internal/types"
 )
 
 // JWTConfig holds JWT signing parameters. Unlike db/redis Config, this is
@@ -34,12 +36,12 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func generateJwtToken(ctx context.Context, cfg JWTConfig, userID, email string) (string, error) {
+func generateJwtToken(ctx context.Context, cfg JWTConfig, userID types.UserId, email string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		Email: email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID,
+			Subject:   strconv.FormatInt(int64(userID), 10),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(cfg.TTL)),
 		},
