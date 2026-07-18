@@ -16,6 +16,7 @@ const addEntryForm = document.getElementById("add-entry-form");
 const urlInput = document.getElementById("url-input");
 const startTimeInput = document.getElementById("start-time");
 const endTimeInput = document.getElementById("end-time");
+const resetTimeBtn = document.getElementById("reset-time-btn");
 const limitCountInput = document.getElementById("limit-count");
 const frequencySelect = document.getElementById("frequency-select");
 const entryError = document.getElementById("entry-error");
@@ -94,6 +95,11 @@ function timestampToTime(isoStr) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+resetTimeBtn.addEventListener("click", () => {
+  startTimeInput.value = "00:00";
+  endTimeInput.value = "23:59";
+});
+
 addEntryForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   entryError.classList.add("hidden");
@@ -104,13 +110,20 @@ addEntryForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const limitCount = Number(limitCountInput.value);
+  if (!Number.isFinite(limitCount) || limitCount < 1) {
+    entryError.textContent = "Limit must be at least 1.";
+    entryError.classList.remove("hidden");
+    return;
+  }
+
   const entry = {
     url: urlInput.value.trim(),
     daily_start_time: timeToTimestamp(startTimeInput.value),
     daily_end_time: timeToTimestamp(endTimeInput.value),
     limit: {
       frequency: frequencySelect.value,
-      limit: Number(limitCountInput.value),
+      limit: limitCount,
     },
   };
 
@@ -129,10 +142,10 @@ addEntryForm.addEventListener("submit", async (event) => {
 function entrySummary(entry) {
   const parts = [];
   if (entry.daily_start_time && entry.daily_end_time) {
-    parts.push(`${timestampToTime(entry.daily_start_time)}–${timestampToTime(entry.daily_end_time)}`);
+    parts.push(`${timestampToTime(entry.daily_start_time)}-${timestampToTime(entry.daily_end_time)}`);
   }
-  parts.push(`${entry.limit.limit}x ${FREQUENCY_LABELS[entry.limit.frequency] || entry.limit.frequency}`);
-  return parts.join(" · ");
+  parts.push(`(${entry.limit.limit}x ${FREQUENCY_LABELS[entry.limit.frequency] || entry.limit.frequency})`);
+  return parts.join(" ");
 }
 
 async function renderEntries() {
@@ -169,7 +182,6 @@ async function renderEntries() {
     const removeBtn = document.createElement("button");
     removeBtn.className = "remove-btn";
     removeBtn.setAttribute("aria-label", `Remove ${entry.url}`);
-    removeBtn.textContent = "×";
     removeBtn.addEventListener("click", async () => {
       try {
         await deleteEntry(auth.token, entry.id);

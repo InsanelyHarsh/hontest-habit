@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
+        <meta charset="UTF-8">
         <link rel="stylesheet" href="popup.css">
     </head>
 
@@ -43,12 +44,15 @@
                 <div class="form-row">
                     <label class="field">
                         Start time
-                        <input type="time" id="start-time">
+                        <input type="time" id="start-time" value="00:00">
                     </label>
                     <label class="field">
                         End time
-                        <input type="time" id="end-time">
+                        <input type="time" id="end-time" value="23:59">
                     </label>
+                </div>
+                <div class="form-row">
+                    <button type="button" id="reset-time-btn" class="link-btn">Reset (whole day)</button>
                 </div>
 
                 <div class="form-row">
