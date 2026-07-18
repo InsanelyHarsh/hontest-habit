@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	goerrors "errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -35,6 +36,20 @@ type BlocklistRepository interface {
 	// belonging to a different user, and an already-removed entry
 	// indistinguishably, so ownership isn't leaked to the caller.
 	RemoveEntry(ctx context.Context, userID types.UserId, id types.BlocklistId) error
+
+	// GetActiveEntry returns userID's single active entry with id id.
+	// Returns errors.NotFound if no active row matched both id and userID —
+	// same ownership-ambiguity semantics as RemoveEntry.
+	GetActiveEntry(ctx context.Context, userID types.UserId, id types.BlocklistId) (*models.BlocklistEntry, error)
+
+	// RecordVisit inserts a visit row for blocklist entry id at visitedAt,
+	// denormalizing userID and url onto the row so history survives even
+	// if the entry is later soft-deleted.
+	RecordVisit(ctx context.Context, userID types.UserId, id types.BlocklistId, url string, visitedAt time.Time) error
+
+	// CountVisits returns the number of visit rows recorded for blocklist
+	// entry id within [periodStart, periodEnd).
+	CountVisits(ctx context.Context, id types.BlocklistId, periodStart, periodEnd time.Time) (int, error)
 }
 
 type BlocklistRepositoryImpl struct {
@@ -134,4 +149,56 @@ func (r BlocklistRepositoryImpl) RemoveEntry(ctx context.Context, userID types.U
 		return errors.NotFound("entry not found", nil)
 	}
 	return nil
+}
+
+func (r BlocklistRepositoryImpl) GetActiveEntry(ctx context.Context, userID types.UserId, id types.BlocklistId) (*models.BlocklistEntry, error) {
+	var entry models.BlocklistEntry
+	var frequency string
+	var metaBytes []byte
+	err := r.db.QueryRow(ctx, `
+		SELECT id, url, daily_start_time, daily_end_time, frequency, limit_count, meta, is_active, created_at, updated_at
+		FROM blocklist_entries
+		WHERE id = $1 AND user_id = $2 AND is_active
+	`, int64(id), int64(userID),
+	).Scan(
+		&entry.ID, &entry.URL, &entry.DailyStartTime, &entry.DailyEndTime,
+		&frequency, &entry.Limit.Limit, &metaBytes, &entry.IsActive,
+		&entry.CreatedAt, &entry.UpdatedAt,
+	)
+	switch {
+	case err == nil:
+		entry.Limit.Frequency = types.Frequency(frequency)
+		if err := json.Unmarshal(metaBytes, &entry.Meta); err != nil {
+			return nil, errors.Internal("failed to decode entry meta", err)
+		}
+		return &entry, nil
+	case goerrors.Is(err, pgx.ErrNoRows):
+		return nil, errors.NotFound("entry not found", nil)
+	default:
+		return nil, errors.Internal("failed to fetch blocklist entry", err)
+	}
+}
+
+func (r BlocklistRepositoryImpl) RecordVisit(ctx context.Context, userID types.UserId, id types.BlocklistId, url string, visitedAt time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO blocklist_visits (blocklist_id, user_id, url, visited_at)
+		VALUES ($1, $2, $3, $4)
+	`, int64(id), int64(userID), url, visitedAt)
+	if err != nil {
+		return errors.Internal("failed to record visit", err)
+	}
+	return nil
+}
+
+func (r BlocklistRepositoryImpl) CountVisits(ctx context.Context, id types.BlocklistId, periodStart, periodEnd time.Time) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM blocklist_visits
+		WHERE blocklist_id = $1 AND visited_at >= $2 AND visited_at < $3
+	`, int64(id), periodStart, periodEnd,
+	).Scan(&count)
+	if err != nil {
+		return 0, errors.Internal("failed to count visits", err)
+	}
+	return count, nil
 }
