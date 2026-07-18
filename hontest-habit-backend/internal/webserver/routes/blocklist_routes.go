@@ -35,12 +35,17 @@ func (bc *BlockListController) handleCreateEntry() webserver.HandlerFunc {
 			return errors.Unauthorized("missing claims", nil)
 		}
 
+		userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+		if err != nil {
+			return errors.Unauthorized("invalid claims", err)
+		}
+
 		var req models.CreateEntryRequest
 		if err := webserver.DecodeJSON(r, &req); err != nil {
 			return err
 		}
 
-		entry, err := bc.blockListManager.CreateEntry(r.Context(), claims.Subject, &req)
+		entry, err := bc.blockListManager.CreateEntry(r.Context(), types.UserId(userID), &req)
 		if err != nil {
 			return err
 		}
@@ -57,7 +62,12 @@ func (bc *BlockListController) handleGetEntries() webserver.HandlerFunc {
 			return errors.Unauthorized("missing claims", nil)
 		}
 
-		entries, err := bc.blockListManager.GetEntries(r.Context(), claims.Subject)
+		userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+		if err != nil {
+			return errors.Unauthorized("invalid claims", err)
+		}
+
+		entries, err := bc.blockListManager.GetEntries(r.Context(), types.UserId(userID))
 		if err != nil {
 			return err
 		}
@@ -74,12 +84,17 @@ func (bc *BlockListController) handleRemoveEntry() webserver.HandlerFunc {
 			return errors.Unauthorized("missing claims", nil)
 		}
 
+		userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+		if err != nil {
+			return errors.Unauthorized("invalid claims", err)
+		}
+
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil {
 			return errors.BadRequest("invalid entry id", err)
 		}
 
-		if err := bc.blockListManager.RemoveEntry(r.Context(), claims.Subject, types.BlocklistId(id)); err != nil {
+		if err := bc.blockListManager.RemoveEntry(r.Context(), types.UserId(userID), types.BlocklistId(id)); err != nil {
 			return err
 		}
 
