@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="popup.css">
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="navbar">
+                <h2>Honest Habit</h2>
+                <button id="logout-btn" class="link-btn hidden">Log out</button>
+            </div>
+        </div>
+
+        <!-- auth view: shown when no token is stored -->
+        <section id="auth-view" class="view hidden">
+            <form id="auth-form">
+                <label>
+                    Email
+                    <input type="email" id="auth-email" required>
+                </label>
+                <label>
+                    Password
+                    <input type="password" id="auth-password" required minlength="8">
+                </label>
+                <p id="auth-error" class="error-text hidden"></p>
+                <button type="submit" id="auth-submit">Log in</button>
+                <p class="switch-mode">
+                    <span id="auth-switch-text">Need an account?</span>
+                    <button type="button" id="auth-switch-btn" class="link-btn">Sign up</button>
+                </p>
+            </form>
+        </section>
+
+        <!-- blocklist view: shown when a token is stored -->
+        <section id="blocklist-view" class="view hidden">
+            <form id="add-entry-form">
+                <div class="form-row">
+                    <input type="text" id="url-input" placeholder="Enter site URL" required>
+                    <button type="submit" id="add-btn">Add</button>
+                </div>
+
+                <div class="form-row">
+                    <label class="field">
+                        Start time
+                        <input type="time" id="start-time" value="00:00">
+                    </label>
+                    <label class="field">
+                        End time
+                        <input type="time" id="end-time" value="23:59">
+                    </label>
+                </div>
+                <div class="form-row">
+                    <button type="button" id="reset-time-btn" class="link-btn">Reset (whole day)</button>
+                </div>
+
+                <div class="form-row">
+                    <label class="field">
+                        Limit
+                        <input type="number" id="limit-count" min="1" value="1" required>
+                    </label>
+                    <label class="field">
+                        Frequency
+                        <select id="frequency-select">
+                            <option value="DL">Daily</option>
+                            <option value="WL">Weekly</option>
+                            <option value="MT">Monthly</option>
+                        </select>
+                    </label>
+                </div>
+
+                <p id="entry-error" class="error-text hidden"></p>
+            </form>
+
+            <ul id="blocked-list"></ul>
+        </section>
+
+        <script src="api.js"></script>
+        <script src="popup.js"></script>
+    </body>
+</html>
