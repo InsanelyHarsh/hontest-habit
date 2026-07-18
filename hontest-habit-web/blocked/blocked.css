@@ -5,22 +5,25 @@
 }
 
 :root {
-  --nav-color: #675d50;
-  --nav-text: #fff;
-  --primary-color: #f3deba;
-  --secondary-color: #abc4aa;
-  --hover-color: #a9907e;
-  --danger-color: #c0392b;
+  color-scheme: dark;
+  --bg-color: #121212;
+  --surface-color: #1e1e1e;
+  --border-color: #3a3a3a;
+  --text-color: #f2f2f2;
+  --muted-text-color: #9e9e9e;
+  --danger-color: #e05353;
 }
 
 body {
-  background-color: var(--primary-color);
+  background-color: var(--bg-color);
+  color: var(--text-color);
   font-family: "Merriweather Sans", sans-serif;
   min-height: 100vh;
 }
 
 .container {
-  background-color: var(--nav-color);
+  background-color: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
   height: 70px;
 }
 
@@ -34,7 +37,7 @@ body {
 }
 
 .navbar h2 {
-  color: var(--nav-text);
+  color: var(--text-color);
 }
 
 .blocked-main {
@@ -54,9 +57,10 @@ body {
 
 .blocked-main p {
   font-size: 1.1rem;
-  color: #333;
+  color: var(--muted-text-color);
 }
 
 .blocked-site {
   font-weight: bold;
+  color: var(--text-color);
 }
