@@ -4,19 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-```bash
-go build ./...                  # build everything
-go vet ./...                    # static checks
-go run ./cmd                    # run the app (server mode by default)
-go mod tidy                     # after adding/removing an import — always run this, not manual go.mod edits
+A `Makefile` wraps the commands below — run `make help` for the full list. Each target is a thin one-line wrapper (no hidden behavior); use the raw command directly if you don't have `make`.
 
-docker compose build            # build the app image
-docker compose up               # postgres + redis + migrator (one-shot) + hontest-habit-backend
+```bash
+make build   # go build ./...
+make vet     # go vet ./...
+make run     # go run ./cmd (server mode by default)
+make tidy    # go mod tidy — after adding/removing an import, always run this, not manual go.mod edits
+make migrate # APP_MODE=migrator go run ./cmd — run pending migrations locally, against whatever DB_* .env points at
+
+make docker-build     # docker compose build
+make up / make up-d   # docker compose up [-d] — postgres + redis + migrator (one-shot) + hontest-habit-backend
+make down             # docker compose down
+make logs             # docker compose logs -f
+make config           # docker compose config — validates docker-compose.yml without a running daemon
+make postgres_connect # psql session inside the dockerized postgres container
 ```
 
 There is no test suite yet — no `_test.go` files exist in the repo.
-
-`docker compose config` is useful to validate `docker-compose.yml` without a running daemon.
 
 ## Architecture
 
@@ -49,6 +54,8 @@ This is why `docker-compose.yml` has a one-shot `migrator` service (`APP_MODE=mi
 
 Config is read via `github.com/spf13/viper`'s **global package functions** directly (`viper.GetString(...)`, `viper.GetInt(...)`) at the point of use — there's no injected config struct passed around, and no central config type. Each package that needs config exposes its own `Config` struct + `ConfigFromEnv()` constructor that reads the relevant viper keys (see `db.ConfigFromEnv()`, `redis.ConfigFromEnv()`). `.env` loading (`SetConfigFile`, `SetConfigType`, `AutomaticEnv`, `ReadInConfig`) happens once, inline, at the top of `cmd/main.go` — a missing `.env` file only logs a warning (env vars from the process/container are still picked up via `AutomaticEnv`). Env var names and defaults are documented in `.env.sample`.
 
+The same root `.env` also drives `docker-compose.yml` — `docker compose` auto-loads it for `${VAR:-default}` interpolation in the compose file, so `DB_USER`/`DB_PASSWORD`/`DB_NAME`/`APP_PORT`/`REDIS_PASSWORD`/`REDIS_DB`/`JWT_SECRET` are one source of truth for both a host-run binary and the containers (`JWT_SECRET` uses `${JWT_SECRET:?...}`, so `docker compose` itself fails fast if it's unset, mirroring `cmd/main.go`'s own fail-fast check). `DB_HOST`/`REDIS_HOST` are the one deliberate exception: they're hardcoded per-service in `docker-compose.yml` to the Docker network service names (`postgres`/`redis`) rather than pulled from `.env`, because `.env`'s value (`localhost`, for a host-run binary talking to the ports `docker-compose.yml` publishes) would be wrong inside a container. Don't parameterize those two — it would silently break container-to-container connectivity.
+
 ### DB (`internal/platform/db/db.go`)
 
 - App queries go through a `pgxpool.Pool` (`db.New`), built via `github.com/jackc/pgx/v5/pgxpool`.
@@ -76,7 +83,7 @@ Plain `net/http` with Go 1.22+ method-prefixed `ServeMux` patterns (`"GET "+path
 Standard `func(http.Handler) http.Handler` middleware, composed by wrapping. `webserver.Group` has a `Use(mw)` method (returns a modified copy of the `Group`, so a base group can spin off both a protected and an unprotected sub-group) that chains middleware in front of every route registered on the returned `Group` — see the Webserver section above.
 
 - `TraceID` — reads an incoming `X-Request-Id` header or generates one, sets it on the response and on the request context (`constants.TraceIDContextKey`, a `types.ContextKey`); read it back via `TraceIDFromContext`. Applied globally in `InitWebServer`.
-- `Authenticate(cfg auth.JWTConfig)` — validates `Authorization: Bearer <token>` via `auth.ValidateToken` and stores the claims on the context (`constants.ClaimsContextKey`); read back via `ClaimsFromContext`. Takes a plain `auth.JWTConfig`, not an `*auth.AuthManager` — the middleware only needs to verify a token, not the manager's repository dependency. Attached to the `blocklist` group in `cmd/main.go` (`server.NewGroup("/blocklist/").Use(middlewares.Authenticate(jwtCfg))`) — the first protected routes in the repo.
+- `Authenticate(cfg auth.JWTConfig)` — validates `Authorization: Bearer <token>` via `auth.ValidateToken` and stores the claims on the context (`constants.ClaimsContextKey`); read back via `ClaimsFromContext`. Takes a plain `auth.JWTConfig`, not an `*auth.AuthManager` — the middleware only needs to verify a token, not the manager's repository dependency. Attached to the `blocklist` group in `cmd/main.go` (`server.Register("/blocklist/", routes.NewBlocklistController(blocklistManager), middlewares.Authenticate(jwtCfg))`) — the first protected routes in the repo.
 - Deliberately, `middlewares` does not import `webserver` (it writes its own JSON error bodies inline) even though `webserver` imports `middlewares` for the global `TraceID` wrap — importing back would cycle.
 
 ### Logging
