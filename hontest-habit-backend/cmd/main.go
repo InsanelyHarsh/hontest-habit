@@ -7,11 +7,17 @@ import (
 
 	"github.com/spf13/viper"
 
+	"github.com/insanelyharsh/hontest-habit/internal/app/auth"
+	"github.com/insanelyharsh/hontest-habit/internal/app/auth/repository"
+	"github.com/insanelyharsh/hontest-habit/internal/app/blocklist"
+	blocklistrepo "github.com/insanelyharsh/hontest-habit/internal/app/blocklist/repository"
 	"github.com/insanelyharsh/hontest-habit/internal/constants"
 	"github.com/insanelyharsh/hontest-habit/internal/platform/db"
 	"github.com/insanelyharsh/hontest-habit/internal/platform/redis"
 	"github.com/insanelyharsh/hontest-habit/internal/types"
 	"github.com/insanelyharsh/hontest-habit/internal/webserver"
+	"github.com/insanelyharsh/hontest-habit/internal/webserver/middlewares"
+	"github.com/insanelyharsh/hontest-habit/internal/webserver/routes"
 )
 
 func main() {
@@ -67,12 +73,18 @@ func runServer() {
 	}
 	defer rdb.Close()
 
-	// register routes here once auth manager/repository/routes are implemented, e.g.:
-	//   server := &webserver.Server{}
-	//   authGroup := server.NewGroup("/auth/")
-	//   routes.RegisterAuthRoutes(authGroup, authManager)
+	jwtCfg := auth.JWTConfigFromEnv()
+	if jwtCfg.Secret == "" {
+		slog.Error("main: JWT_SECRET is required")
+		os.Exit(1)
+	}
+	authManager := auth.NewAuthManager(repository.NewAuthRepository(pool), jwtCfg)
+	blocklistManager := blocklist.NewBlocklistManager(blocklistrepo.NewBlocklistRepository(pool))
 
-	server := &webserver.Server{}
+	server := webserver.NewServer()
+	server.Register("/auth/", routes.NewAuthController(authManager))
+	server.Register("/blocklist/", routes.NewBlocklistController(blocklistManager), middlewares.Authenticate(jwtCfg))
+
 	if err := server.InitWebServer(); err != nil {
 		slog.Error("main: webserver exited", "error", err)
 		os.Exit(1)

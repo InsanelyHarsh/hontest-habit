@@ -11,12 +11,24 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/viper"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
+
+// IDB is the subset of *pgxpool.Pool that repositories depend on. Repositories
+// accept this interface instead of the concrete pool so they can be
+// constructed against a fake/mock in tests.
+type IDB interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
 
 // Config holds Postgres connection parameters.
 type Config struct {
