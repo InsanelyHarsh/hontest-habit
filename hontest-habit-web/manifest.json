@@ -1,0 +1,25 @@
+{
+  "name": "Hontest Habit",
+  "description": "Track Habits Hontestly",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": "images/cat.jpeg"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "webNavigation", "tabs", "alarms"],
+  "host_permissions": [
+    "http://localhost:8080/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked/blocked.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
